@@ -140,6 +140,9 @@ func NewInterface(c *InterfaceConfig) (*Interface, error) {
 // activate creates the interface on the host. After the interface is created, any
 // other services that want to bind listeners to its IP may do so successfully. However,
 // the interface isn't going to process anything until run() is called.
+//激活在主机上创建接口。在接口被创建后，任何
+// 想把监听器绑定到它的IP上的任何其他服务都可以成功这样做。然而。
+// 在调用run()之前，该接口不会处理任何事情。
 func (f *Interface) activate() {
 	// actually turn on tun dev
 

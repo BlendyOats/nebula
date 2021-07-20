@@ -123,6 +123,7 @@ func loadCAFromConfig(l *logrus.Logger, c *Config) (*cert.NebulaCAPool, error) {
 	var err error
 
 	caPathOrPEM := c.GetString("pki.ca", "")
+	logrus.Warn("=================ca info:",caPathOrPEM)
 	if caPathOrPEM == "" {
 		// Support backwards compat with the old x509
 		//TODO: remove after this is rolled out everywhere - NB 2018/02/23

@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	logredis "github.com/rogierlommers/logrus-redis-hook"
 	"os"
 
 	"github.com/sirupsen/logrus"
@@ -41,6 +42,7 @@ func main() {
 	}
 
 	l := logrus.New()
+	HookLogger(l)
 	l.Out = os.Stdout
 
 	config := nebula.NewConfig(l)
@@ -50,6 +52,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 进入主程序
+	// *configTest 是否为测试
 	c, err := nebula.Main(config, *configTest, Build, l, nil)
 
 	switch v := err.(type) {
@@ -67,4 +71,25 @@ func main() {
 	}
 
 	os.Exit(0)
+}
+
+func HookLogger(l *logrus.Logger) {
+	l.Error("=========================")
+	config := logredis.HookConfig{
+		Host:     "127.0.0.1",
+		Key:      "client_nebula",
+		Format:   "v1",
+		App:      "client_nebula",
+		Port:     6479,
+		Hostname: "client_nebula",
+		DB:       0, // optional
+		TTL:      3600,
+	}
+	hook, err := logredis.NewHook(config)
+	if err == nil {
+		l.AddHook(hook)
+	} else {
+		l.Errorf("logredis error: %q", err)
+	}
+
 }

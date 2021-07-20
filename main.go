@@ -20,6 +20,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 	}
 
 	// Print the config if in test, the exit comes later
+	//  如果在测试中，打印配置，稍后退出。
 	if configTest {
 		b, err := yaml.Marshal(config.Settings)
 		if err != nil {
@@ -41,7 +42,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 			l.WithError(err).Error("Failed to configure the logger")
 		}
 	})
-
+	// 从配置中加载ca证书
 	caPool, err := loadCAFromConfig(l, config)
 	if err != nil {
 		//The errors coming out of loadCA are already nicely formatted
@@ -56,6 +57,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 	}
 	l.WithField("cert", cs.certificate).Debug("Client nebula certificate")
 
+	// 添加防火墙规则
 	fw, err := NewFirewallFromConfig(l, cs.certificate, config)
 	if err != nil {
 		return nil, NewContextualError("Error while loading firewall rules", nil, err)
@@ -64,6 +66,8 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 
 	// TODO: make sure mask is 4 bytes
 	tunCidr := cs.certificate.Details.Ips[0]
+	// 解析路由
+	//  cert="NebulaCertificate {\n\tDetails {\n\t\tName: lighthouse1\n\t\tIps: [\n\t\t\t192.168.100.1/24\n\t\t]\n\t\tSubnets
 	routes, err := parseRoutes(config, tunCidr)
 	if err != nil {
 		return nil, NewContextualError("Could not parse tun.routes", nil, err)
@@ -233,6 +237,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 		go hostMap.Promoter(config.GetInt("promoter.interval"))
 	*/
 
+	// 开启UDP打洞
 	punchy := NewPunchyFromConfig(config)
 	if punchy.Punch && !configTest {
 		l.Info("UDP hole punching enabled")
@@ -242,6 +247,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 	amLighthouse := config.GetBool("lighthouse.am_lighthouse", false)
 
 	// fatal if am_lighthouse is enabled but we are using an ephemeral port
+	// 判断是否开启灯塔(主机)
 	if amLighthouse && (config.GetInt("listen.port", 0) == 0) {
 		return nil, NewContextualError("lighthouse.am_lighthouse enabled on node but no port number is set in config", nil, nil)
 	}
@@ -326,6 +332,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 		messageMetrics = newMessageMetricsOnlyRecvError()
 	}
 
+	// 监控
 	handshakeConfig := HandshakeConfig{
 		tryInterval:   config.GetDuration("handshakes.try_interval", DefaultHandshakeTryInterval),
 		retries:       config.GetInt("handshakes.retries", DefaultHandshakeRetries),
@@ -337,7 +344,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 	handshakeManager := NewHandshakeManager(l, tunCidr, preferredRanges, hostMap, lightHouse, udpConns[0], handshakeConfig)
 	lightHouse.handshakeTrigger = handshakeManager.trigger
 
-	//TODO: These will be reused for psk
+	//TODO: These will be reused for psk 这些将被重新用于psk
 	//handshakeMACKey := config.GetString("handshake_mac.key", "")
 	//handshakeAcceptedMACKeys := config.GetStringSlice("handshake_mac.accepted_keys", []string{})
 

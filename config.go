@@ -114,6 +114,8 @@ func (c *Config) HasChanged(k string) bool {
 
 // CatchHUP will listen for the HUP signal in a go routine and reload all configs found in the
 // original path provided to Load. The old settings are shallow copied for change detection after the reload.
+// CatchHUP将在一个go例程中监听HUP信号，并重新加载在提供给Load的原始路径中找到的所有配置。
+// 提供给Load的原始路径中找到的所有配置。旧的设置将被浅浅地复制，以便在重载后进行变化检测。
 func (c *Config) CatchHUP() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGHUP)

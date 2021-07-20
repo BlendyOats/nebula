@@ -63,7 +63,7 @@ func parseRoutes(config *Config, network *net.IPNet) ([]route, error) {
 		r := route{
 			mtu: mtu,
 		}
-
+		// 解析Ip地址
 		_, r.route, err = net.ParseCIDR(fmt.Sprintf("%v", rRoute))
 		if err != nil {
 			return nil, fmt.Errorf("entry %v.route in tun.routes failed to parse: %v", i+1, err)

@@ -66,6 +66,10 @@ func wireSSHReload(l *logrus.Logger, ssh *sshd.SSHServer, c *Config) {
 // updates the passed-in SSHServer. On success, it returns a function
 // that callers may invoke to run the configured ssh server. On
 // failure, it returns nil, error.
+// configSSH从传入的Config中读出ssh信息，并且
+// 更新传入的SSHServer。成功后，它返回一个函数
+// 调用者可以调用该函数来运行配置好的ssh服务器。如果
+// 失败时，它将返回nil，即错误。
 func configSSH(l *logrus.Logger, ssh *sshd.SSHServer, c *Config) (func(), error) {
 	//TODO conntrack list
 	//TODO print firewall rules or hash?

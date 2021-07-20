@@ -299,6 +299,7 @@ func (f *Firewall) GetRuleHash() string {
 	return hex.EncodeToString(sum[:])
 }
 
+// 从配置中添加防火墙规则
 func AddFirewallRulesFromConfig(l *logrus.Logger, inbound bool, config *Config, fw FirewallInterface) error {
 	var table string
 	if inbound {
@@ -319,6 +320,7 @@ func AddFirewallRulesFromConfig(l *logrus.Logger, inbound bool, config *Config, 
 
 	for i, t := range rs {
 		var groups []string
+		// 转换规则
 		r, err := convertRule(l, t, table, i)
 		if err != nil {
 			return fmt.Errorf("%s rule #%v; %s", table, i, err)

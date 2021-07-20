@@ -1,9 +1,11 @@
-package main
+package util
 
 import (
+	"context"
 	"crypto/rand"
 	"flag"
 	"fmt"
+	"go.mongodb.org/mongo-driver/mongo"
 	"io"
 	"io/ioutil"
 	"net"
@@ -27,6 +29,15 @@ type caFlags struct {
 	ips         *string
 	subnets     *string
 }
+type caDb struct {
+	id   string
+	ca   []byte
+	created time.Time
+	updated time.Time
+	deleted time.Time
+}
+
+
 
 func newCaFlags() *caFlags {
 	cf := caFlags{set: flag.NewFlagSet("ca", flag.ContinueOnError)}
@@ -42,7 +53,7 @@ func newCaFlags() *caFlags {
 	return &cf
 }
 
-func ca(args []string, out io.Writer, errOut io.Writer) error {
+func ca(args []string, out io.Writer, errOut io.Writer,collection *mongo.Collection) error {
 	cf := newCaFlags()
 	err := cf.set.Parse(args)
 	if err != nil {
@@ -102,8 +113,16 @@ func ca(args []string, out io.Writer, errOut io.Writer) error {
 			}
 		}
 	}
-
+	now := time.Now()
 	pub, rawPriv, err := ed25519.GenerateKey(rand.Reader)
+	pubDb := caDb{id: "pub", ca: pub, created: now, updated: nil, deleted: nil}
+	Pridb := caDb{id: "rawPriv", ca: rawPriv, created: now, updated: nil, deleted: nil}
+	_, err = collection.InsertOne(context.TODO(), pubDb)
+	_, err = collection.InsertOne(context.TODO(), Pridb)
+	if err != nil {
+		fmt.Print(err)
+		return fmt.Errorf("save pub ca failure: %s", err)
+	}
 	if err != nil {
 		return fmt.Errorf("error while generating ed25519 keys: %s", err)
 	}
