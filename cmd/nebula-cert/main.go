@@ -1,15 +1,10 @@
-package util
+package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
-	"github.com/slackhq/nebula/util"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"io"
 	"os"
-	"time"
 )
 
 var Build string
@@ -27,26 +22,6 @@ func newHelpErrorf(s string, v ...interface{}) error {
 }
 
 func main() {
-	var (
-		client=util.GetMgoCli()
-		err        error
-		db         *mongo.Database
-		collection *mongo.Collection
-	)
-
-	//1.建立连接
-	if client, err = mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://localhost:27017").SetConnectTimeout(5*time.Second)); err != nil {
-		fmt.Print(err)
-		return
-	}
-	//2.选择数据库 my_db
-	db = client.Database("nebula_db")
-
-	//3.选择表 my_collection
-	collection = db.Collection("nebula_ca")
-	collection = collection
-
-
 	flag.Usage = func() {
 		help("", os.Stderr)
 		os.Exit(1)
@@ -82,10 +57,10 @@ func main() {
 		handleError(args[0], &helpError{}, os.Stderr)
 		os.Exit(0)
 	}
-
+	var err error
 	switch args[0] {
 	case "ca":
-		err = ca(args[1:], os.Stdout, os.Stderr,collection)
+		err = ca(args[1:], os.Stdout, os.Stderr)
 	case "keygen":
 		err = keygen(args[1:], os.Stdout, os.Stderr)
 	case "sign":

@@ -1,10 +1,13 @@
-package util
+package main
 
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"flag"
 	"fmt"
+	"github.com/slackhq/nebula/config"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"io"
 	"io/ioutil"
@@ -29,15 +32,6 @@ type caFlags struct {
 	ips         *string
 	subnets     *string
 }
-type caDb struct {
-	id   string
-	ca   []byte
-	created time.Time
-	updated time.Time
-	deleted time.Time
-}
-
-
 
 func newCaFlags() *caFlags {
 	cf := caFlags{set: flag.NewFlagSet("ca", flag.ContinueOnError)}
@@ -53,12 +47,19 @@ func newCaFlags() *caFlags {
 	return &cf
 }
 
-func ca(args []string, out io.Writer, errOut io.Writer,collection *mongo.Collection) error {
+func ca(args []string, out io.Writer, errOut io.Writer) error {
+
 	cf := newCaFlags()
 	err := cf.set.Parse(args)
 	if err != nil {
 		return err
 	}
+	// 引入数据库
+	connect, err := mongo.Connect(context.TODO(), config.ClientOpts)
+	if err != nil {
+		return err
+	}
+	collection := connect.Database("nebula_db").Collection("nebula_ca")
 
 	if err := mustFlagString("name", cf.name); err != nil {
 		return err
@@ -114,11 +115,8 @@ func ca(args []string, out io.Writer, errOut io.Writer,collection *mongo.Collect
 		}
 	}
 	now := time.Now()
+	todo := context.TODO()
 	pub, rawPriv, err := ed25519.GenerateKey(rand.Reader)
-	pubDb := caDb{id: "pub", ca: pub, created: now, updated: nil, deleted: nil}
-	Pridb := caDb{id: "rawPriv", ca: rawPriv, created: now, updated: nil, deleted: nil}
-	_, err = collection.InsertOne(context.TODO(), pubDb)
-	_, err = collection.InsertOne(context.TODO(), Pridb)
 	if err != nil {
 		fmt.Print(err)
 		return fmt.Errorf("save pub ca failure: %s", err)
@@ -143,7 +141,6 @@ func ca(args []string, out io.Writer, errOut io.Writer,collection *mongo.Collect
 	if _, err := os.Stat(*cf.outKeyPath); err == nil {
 		return fmt.Errorf("refusing to overwrite existing CA key: %s", *cf.outKeyPath)
 	}
-
 	if _, err := os.Stat(*cf.outCertPath); err == nil {
 		return fmt.Errorf("refusing to overwrite existing CA cert: %s", *cf.outCertPath)
 	}
@@ -154,6 +151,8 @@ func ca(args []string, out io.Writer, errOut io.Writer,collection *mongo.Collect
 	}
 
 	err = ioutil.WriteFile(*cf.outKeyPath, cert.MarshalEd25519PrivateKey(rawPriv), 0600)
+	// 插入私钥
+	_, err = collection.InsertOne(todo, bson.M{"group": cf.name, "type": "pri", "ca": base64.StdEncoding.EncodeToString([]byte(rawPriv)), "created": now, "updated": now, "deleted": now})
 	if err != nil {
 		return fmt.Errorf("error while writing out-key: %s", err)
 	}
@@ -164,16 +163,19 @@ func ca(args []string, out io.Writer, errOut io.Writer,collection *mongo.Collect
 	}
 
 	err = ioutil.WriteFile(*cf.outCertPath, b, 0600)
+	// 插入公钥
+	_, err = collection.InsertOne(todo, bson.M{"group": cf.name, "type": "pub", "ca": base64.StdEncoding.EncodeToString([]byte(b)), "created": now, "updated": now, "deleted": now})
+
 	if err != nil {
 		return fmt.Errorf("error while writing out-crt: %s", err)
 	}
 
+	// 输出二维码
 	if *cf.outQRPath != "" {
 		b, err = qrcode.Encode(string(b), qrcode.Medium, -5)
 		if err != nil {
 			return fmt.Errorf("error while generating qr code: %s", err)
 		}
-
 		err = ioutil.WriteFile(*cf.outQRPath, b, 0600)
 		if err != nil {
 			return fmt.Errorf("error while writing out-qr: %s", err)

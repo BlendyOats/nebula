@@ -74,7 +74,6 @@ func main() {
 }
 
 func HookLogger(l *logrus.Logger) {
-	l.Error("=========================")
 	config := logredis.HookConfig{
 		Host:     "127.0.0.1",
 		Key:      "client_nebula",
