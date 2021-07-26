@@ -43,6 +43,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 		}
 	})
 	// 从配置中加载ca证书
+	// TODO: 如果config中获取不到ca，则从db中取，再没有，则抛出错误返回
 	caPool, err := loadCAFromConfig(l, config)
 	if err != nil {
 		//The errors coming out of loadCA are already nicely formatted

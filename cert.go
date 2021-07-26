@@ -1,8 +1,12 @@
 package nebula
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"github.com/slackhq/nebula/config"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 	"io/ioutil"
 	"strings"
 	"time"
@@ -17,6 +21,16 @@ type CertState struct {
 	rawCertificateNoKey []byte
 	publicKey           []byte
 	privateKey          []byte
+}
+
+
+type caModel struct {
+	Name    *string   `json:"name"`
+	Type    *string   `json:"type"`
+	Ca      *string   `json:"ca"`
+	Created time.Time `json:"created"`
+	Updated time.Time `json:"updated"`
+	Deleted time.Time `json:"deleted"`
 }
 
 func NewCertState(certificate *cert.NebulaCertificate, privateKey []byte) (*CertState, error) {
@@ -46,8 +60,23 @@ func NewCertState(certificate *cert.NebulaCertificate, privateKey []byte) (*Cert
 }
 
 func NewCertStateFromConfig(c *Config) (*CertState, error) {
+
+	var result caModel
+
 	var pemPrivateKey []byte
 	var err error
+
+	// TODO : 先从DB中查询
+	// 引入数据库
+	connect, _ := mongo.Connect(context.TODO(), config.ClientOpts)
+	collection := connect.Database("nebula_db").Collection("nebula_ca")
+	rawCAKey := collection.FindOne(context.TODO(), bson.M{"name": "host", "type": "key"})
+	if err = rawCAKey.Decode(&result); err == nil {
+		fmt.Printf("result: %+v\n", result)
+	}
+	// 获取ca
+	// prawCa := *result.Ca
+
 
 	privPathOrPEM := c.GetString("pki.key", "")
 	if privPathOrPEM == "" {
@@ -119,30 +148,38 @@ func NewCertStateFromConfig(c *Config) (*CertState, error) {
 }
 
 func loadCAFromConfig(l *logrus.Logger, c *Config) (*cert.NebulaCAPool, error) {
-	var rawCA []byte
+	var result caModel
 	var err error
+	connect, _ := mongo.Connect(context.TODO(), config.ClientOpts)
+	collection := connect.Database("nebula_db").Collection("nebula_ca")
+	rawCAKey := collection.FindOne(context.TODO(), bson.M{"name": "seeed", "type": "cert"})
+	rawCAKey.Decode(&result)
+	priCa := *result.Ca
+	var rawCA []byte
+	if priCa!= ""{
+		rawCA= []byte(priCa)
+	}else {
+		caPathOrPEM := c.GetString("pki.ca", "")
+		if caPathOrPEM == "" {
+			// Support backwards compat with the old x509
+			//TODO: remove after this is rolled out everywhere - NB 2018/02/23
+			caPathOrPEM = c.GetString("x509.ca", "")
+		}
+		if caPathOrPEM == "" {
+			return nil, errors.New("no pki.ca path or PEM data provided")
+		}
 
-	caPathOrPEM := c.GetString("pki.ca", "")
-	logrus.Warn("=================ca info:",caPathOrPEM)
-	if caPathOrPEM == "" {
-		// Support backwards compat with the old x509
-		//TODO: remove after this is rolled out everywhere - NB 2018/02/23
-		caPathOrPEM = c.GetString("x509.ca", "")
-	}
-
-	if caPathOrPEM == "" {
-		return nil, errors.New("no pki.ca path or PEM data provided")
-	}
-
-	if strings.Contains(caPathOrPEM, "-----BEGIN") {
-		rawCA = []byte(caPathOrPEM)
-		caPathOrPEM = "<inline>"
-	} else {
-		rawCA, err = ioutil.ReadFile(caPathOrPEM)
-		if err != nil {
-			return nil, fmt.Errorf("unable to read pki.ca file %s: %s", caPathOrPEM, err)
+		if strings.Contains(caPathOrPEM, "-----BEGIN") {
+			rawCA = []byte(caPathOrPEM)
+			caPathOrPEM = "<inline>"
+		} else {
+			rawCA, err = ioutil.ReadFile(caPathOrPEM)
+			if err != nil {
+				return nil, fmt.Errorf("unable to read pki.ca file %s: %s", caPathOrPEM, err)
+			}
 		}
 	}
+
 
 	CAs, err := cert.NewCAPoolFromBytes(rawCA)
 	if err != nil {
