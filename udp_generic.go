@@ -21,6 +21,7 @@ type udpConn struct {
 
 func NewListener(l *logrus.Logger, ip string, port int, multi bool) (*udpConn, error) {
 	lc := NewListenConfig(multi)
+	// 解析Ip地址
 	pc, err := lc.ListenPacket(context.TODO(), "udp", fmt.Sprintf("%s:%d", ip, port))
 	if err != nil {
 		return nil, err

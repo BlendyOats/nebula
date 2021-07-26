@@ -369,6 +369,7 @@ func (hm *HostMap) punchList(rl []*RemoteList) []*RemoteList {
 }
 
 // Punchy iterates through the result of punchList() to assemble all known addresses and sends a hole punch packet to them
+// Punchy 遍历punchList()的结果，集合所有已知的地址，并向它们发送一个打洞包。
 func (hm *HostMap) Punchy(conn *udpConn) {
 	var metricsTxPunchy metrics.Counter
 	if hm.metricsEnabled {
@@ -385,6 +386,7 @@ func (hm *HostMap) Punchy(conn *udpConn) {
 			//TODO: CopyAddrs generates garbage but ForEach locks for the work here, figure out which way is better
 			for _, addr := range rl.CopyAddrs(hm.preferredRanges) {
 				metricsTxPunchy.Inc(1)
+				// 发送数据包
 				conn.WriteTo(b, addr)
 			}
 		}
@@ -405,6 +407,7 @@ func (i *HostInfo) BindConnectionState(cs *ConnectionState) {
 
 // TryPromoteBest handles re-querying lighthouses and probing for better paths
 // NOTE: It is an error to call this if you are a lighthouse since they should not roam clients!
+// 不为灯塔的尝试
 func (i *HostInfo) TryPromoteBest(preferredRanges []*net.IPNet, ifce *Interface) {
 	c := atomic.AddUint32(&i.promoteCounter, 1)
 	if c%PromoteEvery == 0 {
@@ -461,6 +464,7 @@ func (i *HostInfo) cachePacket(l *logrus.Logger, t NebulaMessageType, st NebulaM
 }
 
 // handshakeComplete will set the connection as ready to communicate, as well as flush any stored packets
+// 将把连接设置为准备好进行通信，并刷新任何存储的数据包。
 func (i *HostInfo) handshakeComplete(l *logrus.Logger, m *cachedPacketMetrics) {
 	//TODO: I'm not certain the distinction between handshake complete and ConnectionState being ready matters because:
 	//TODO: HandshakeComplete means send stored packets and ConnectionState.ready means we are ready to send

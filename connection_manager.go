@@ -167,11 +167,13 @@ func (n *connectionManager) HandleMonitorTick(now time.Time, p, nb, out []byte) 
 		traf := n.CheckIn(vpnIP)
 
 		// If we saw incoming packets from this ip, just return
+		// 灯塔数据包传入
 		if traf {
 			if n.l.Level >= logrus.DebugLevel {
 				n.l.WithField("vpnIp", IntIp(vpnIP)).
 					WithField("tunnelCheck", m{"state": "alive", "method": "passive"}).
 					Debug("Tunnel status")
+
 			}
 			n.ClearIP(vpnIP)
 			n.ClearPendingDeletion(vpnIP)

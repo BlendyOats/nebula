@@ -176,6 +176,7 @@ func (f *Interface) activate() {
 
 func (f *Interface) run() {
 	// Launch n queues to read packets from udp
+	//  启动n个队列，从udp读取数据包
 	for i := 0; i < f.routines; i++ {
 		go f.listenOut(i)
 	}

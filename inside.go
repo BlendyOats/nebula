@@ -162,6 +162,7 @@ func (f *Interface) SendMessageToVpnIp(t NebulaMessageType, st NebulaMessageSubT
 	if !hostInfo.ConnectionState.ready {
 		// Because we might be sending stored packets, lock here to stop new things going to
 		// the packet queue.
+		// 发送数据包时，加锁，防止其他数据包进入
 		hostInfo.ConnectionState.queueLock.Lock()
 		if !hostInfo.ConnectionState.ready {
 			hostInfo.cachePacket(f.l, t, st, p, f.sendMessageToVpnIp, f.cachedPacketMetrics)

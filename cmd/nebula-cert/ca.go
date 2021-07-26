@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	"encoding/base64"
 	"flag"
 	"fmt"
 	"github.com/slackhq/nebula/config"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"io"
 	"io/ioutil"
 	"net"
@@ -137,7 +137,6 @@ func ca(args []string, out io.Writer, errOut io.Writer) error {
 			IsCA:      true,
 		},
 	}
-
 	if _, err := os.Stat(*cf.outKeyPath); err == nil {
 		return fmt.Errorf("refusing to overwrite existing CA key: %s", *cf.outKeyPath)
 	}
@@ -149,26 +148,31 @@ func ca(args []string, out io.Writer, errOut io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("error while signing: %s", err)
 	}
-
-	err = ioutil.WriteFile(*cf.outKeyPath, cert.MarshalEd25519PrivateKey(rawPriv), 0600)
-	// 插入私钥
-	_, err = collection.InsertOne(todo, bson.M{"group": cf.name, "type": "pri", "ca": base64.StdEncoding.EncodeToString([]byte(rawPriv)), "created": now, "updated": now, "deleted": now})
+	// err = ioutil.WriteFile(*cf.outKeyPath, cert.MarshalEd25519PrivateKey(rawPriv), 0600)
 	if err != nil {
-		return fmt.Errorf("error while writing out-key: %s", err)
+		return fmt.Errorf("error install certificate: %s", err)
 	}
-
 	b, err := nc.MarshalToPEM()
 	if err != nil {
 		return fmt.Errorf("error while marshalling certificate: %s", err)
 	}
 
-	err = ioutil.WriteFile(*cf.outCertPath, b, 0600)
 	// 插入公钥
-	_, err = collection.InsertOne(todo, bson.M{"group": cf.name, "type": "pub", "ca": base64.StdEncoding.EncodeToString([]byte(b)), "created": now, "updated": now, "deleted": now})
+	err = ioutil.WriteFile(*cf.outCertPath, b, 0600)
+	//if err != nil {
+	//	return fmt.Errorf("error while writing out-crt: %s", err)
+	//}
 
-	if err != nil {
-		return fmt.Errorf("error while writing out-crt: %s", err)
+	docs := []interface{}{
+		bson.M{"name": cf.name, "type": "key", "ca": cert.MarshalEd25519PrivateKey(rawPriv), "created": now, "updated": now, "deleted": now},
+		bson.M{"name": cf.name, "type": "cert", "ca": b, "created": now, "updated": now, "deleted": now},
 	}
+	insertManyOpts := options.InsertMany().SetOrdered(false)
+	insertManyResult, err := collection.InsertMany(todo, docs, insertManyOpts)
+	if err != nil {
+		return fmt.Errorf("error while install db: %s", err)
+	}
+	fmt.Println("ids:", insertManyResult.InsertedIDs)
 
 	// 输出二维码
 	if *cf.outQRPath != "" {

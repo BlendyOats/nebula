@@ -72,6 +72,7 @@ func (c *HandshakeManager) Run(f EncWriter) {
 		select {
 		case vpnIP := <-c.trigger:
 			c.l.WithField("vpnIp", IntIp(vpnIP)).Debug("HandshakeManager: triggered")
+			// 出站
 			c.handleOutbound(vpnIP, f, true)
 		case now := <-clockSource:
 			c.NextOutboundHandshakeTimerTick(now, f)
@@ -91,8 +92,12 @@ func (c *HandshakeManager) NextOutboundHandshakeTimerTick(now time.Time, f EncWr
 	}
 }
 
+// 处理出站
 func (c *HandshakeManager) handleOutbound(vpnIP uint32, f EncWriter, lighthouseTriggered bool) {
 	hostinfo, err := c.pendingHostMap.QueryVpnIP(vpnIP)
+	logrus.Warn("=============出站处理===========")
+	logrus.Warn("hostInfo:",hostinfo)
+
 	if err != nil {
 		return
 	}
@@ -107,6 +112,7 @@ func (c *HandshakeManager) handleOutbound(vpnIP uint32, f EncWriter, lighthouseT
 	}
 
 	// Check if we have a handshake packet to transmit yet
+	// 检测是否还有数据包需要传输
 	if !hostinfo.HandshakeReady {
 		// There is currently a slight race in getOrHandshake due to ConnectionState not being part of the HostInfo directly
 		// Our hostinfo here was added to the pending map and the wheel may have ticked to us before we created ConnectionState
@@ -146,6 +152,9 @@ func (c *HandshakeManager) handleOutbound(vpnIP uint32, f EncWriter, lighthouseT
 		// If we only have 1 remote it is highly likely our query raced with the other host registered within the lighthouse
 		// Our vpnIP here has a tunnel with a lighthouse but has yet to send a host update packet there so we only know about
 		// the learned public ip for them. Query again to short circuit the promotion counter
+		// 如果我们只有一个远程，那么我们的查询很可能与在灯塔内注册的其他主机发生冲突。
+		// 我们的vpnIP在这里与灯塔有一条隧道，但还没有向那里发送一个主机更新包，所以我们只知道
+		//他们的公共IP。再次查询，以缩短推广计数器的时间
 		c.lightHouse.QueryServer(vpnIP, f)
 	}
 
@@ -162,10 +171,12 @@ func (c *HandshakeManager) handleOutbound(vpnIP uint32, f EncWriter, lighthouseT
 
 		} else {
 			sentTo = append(sentTo, addr)
+			logrus.Warn("sentTo:",sentTo)
 		}
 	})
 
 	// Don't be too noisy or confusing if we fail to send a handshake - if we don't get through we'll eventually log a timeout
+	// 如果我们不能发送握手信号，不要太吵，也不要太混乱--如果我们没有打通，最终会记录超时。
 	if len(sentTo) > 0 {
 		hostinfo.logger(c.l).WithField("udpAddrs", sentTo).
 			WithField("initiatorIndex", hostinfo.localIndexId).
@@ -174,9 +185,11 @@ func (c *HandshakeManager) handleOutbound(vpnIP uint32, f EncWriter, lighthouseT
 	}
 
 	// Increment the counter to increase our delay, linear backoff
+	//  递增计数器以增加我们的延迟，线性后退
 	hostinfo.HandshakeCounter++
 
 	// If a lighthouse triggered this attempt then we are still in the timer wheel and do not need to re-add
+	// 如果一个灯塔触发了这一尝试，那么我们仍然在定时器轮中，不需要重新添加
 	if !lighthouseTriggered {
 		//TODO: feel like we dupe handshake real fast in a tight loop, why?
 		c.OutboundHandshakeTimer.Add(vpnIP, c.config.tryInterval*time.Duration(hostinfo.HandshakeCounter))

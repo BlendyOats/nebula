@@ -50,6 +50,7 @@ func (c *Control) Start() {
 	}
 
 	// Start reading packets.
+	// 开始读数据包
 	c.f.run()
 }
 

@@ -1,9 +1,14 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"flag"
 	"fmt"
+	"github.com/slackhq/nebula/config"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"io"
 	"io/ioutil"
 	"net"
@@ -29,6 +34,16 @@ type signFlags struct {
 	outQRPath   *string
 	groups      *string
 	subnets     *string
+	parent      *string
+}
+
+type caModel struct {
+	Name    *string   `json:"name"`
+	Type    *string   `json:"type"`
+	Ca      *string   `json:"ca"`
+	Created time.Time `json:"created"`
+	Updated time.Time `json:"updated"`
+	Deleted time.Time `json:"deleted"`
 }
 
 func newSignFlags() *signFlags {
@@ -37,6 +52,7 @@ func newSignFlags() *signFlags {
 	sf.caKeyPath = sf.set.String("ca-key", "ca.key", "Optional: path to the signing CA key")
 	sf.caCertPath = sf.set.String("ca-crt", "ca.crt", "Optional: path to the signing CA cert")
 	sf.name = sf.set.String("name", "", "Required: name of the cert, usually a hostname")
+	sf.parent = sf.set.String("parent", "", "获取root ca")
 	sf.ip = sf.set.String("ip", "", "Required: ip and network in CIDR notation to assign the cert")
 	sf.duration = sf.set.Duration("duration", 0, "Optional: how long the cert should be valid for. The default is 1 second before the signing cert expires. Valid time units are seconds: \"s\", minutes: \"m\", hours: \"h\"")
 	sf.inPubPath = sf.set.String("in-pub", "", "Optional (if out-key not set): path to read a previously generated public key")
@@ -50,12 +66,21 @@ func newSignFlags() *signFlags {
 }
 
 func signCert(args []string, out io.Writer, errOut io.Writer) error {
+	// 公钥
+	var result caModel
+	now := time.Now()
+	todo := context.TODO()
 	sf := newSignFlags()
 	err := sf.set.Parse(args)
 	if err != nil {
 		return err
 	}
-
+	// 引入数据库
+	connect, err := mongo.Connect(context.TODO(), config.ClientOpts)
+	if err != nil {
+		return err
+	}
+	collection := connect.Database("nebula_db").Collection("nebula_ca")
 	if err := mustFlagString("ca-key", sf.caKeyPath); err != nil {
 		return err
 	}
@@ -68,26 +93,40 @@ func signCert(args []string, out io.Writer, errOut io.Writer) error {
 	if err := mustFlagString("ip", sf.ip); err != nil {
 		return err
 	}
+	if err := mustFlagString("parent", sf.parent); err != nil {
+		return fmt.Errorf("这是一个错误: %s", err)
+	}
 	if *sf.inPubPath != "" && *sf.outKeyPath != "" {
 		return newHelpErrorf("cannot set both -in-pub and -out-key")
 	}
-
-	rawCAKey, err := ioutil.ReadFile(*sf.caKeyPath)
+	// 从db查找
+	rawCAKey := collection.FindOne(context.TODO(), bson.M{"name": *sf.parent, "type": "key"})
+	if err = rawCAKey.Decode(&result); err != nil {
+		return fmt.Errorf("解析结果失败: %s", err)
+	}
+	// 获取ca
+	priCa := *result.Ca
+	//rawCAKey, err := ioutil.ReadFile(*sf.caKeyPath)
+	//if err != nil {
+	//	return fmt.Errorf("error while reading ca-key: %s", err)
+	//}
+	caKey, _, err := cert.UnmarshalEd25519PrivateKey([]byte(priCa))
 	if err != nil {
-		return fmt.Errorf("error while reading ca-key: %s", err)
+		return fmt.Errorf("解析ca key失败: %s", err)
+	}
+	//rawCACert, err := ioutil.ReadFile(*sf.caCertPath)
+	rawCACert := collection.FindOne(context.TODO(), bson.M{"name": *sf.parent, "type": "cert"})
+	if err = rawCACert.Decode(&result); err == nil {
+		fmt.Printf("result: %+v\n", result)
+	}
+	// 获取ca
+	prawCa := *result.Ca
+	if err != nil {
+		return fmt.Errorf("读取ca cert失败 %s", err)
 	}
 
-	caKey, _, err := cert.UnmarshalEd25519PrivateKey(rawCAKey)
-	if err != nil {
-		return fmt.Errorf("error while parsing ca-key: %s", err)
-	}
-
-	rawCACert, err := ioutil.ReadFile(*sf.caCertPath)
-	if err != nil {
-		return fmt.Errorf("error while reading ca-crt: %s", err)
-	}
-
-	caCert, _, err := cert.UnmarshalNebulaCertificateFromPEM(rawCACert)
+	// 解密
+	caCert, _, err := cert.UnmarshalNebulaCertificateFromPEM([]byte(prawCa))
 	if err != nil {
 		return fmt.Errorf("error while parsing ca-crt: %s", err)
 	}
@@ -106,6 +145,7 @@ func signCert(args []string, out io.Writer, errOut io.Writer) error {
 		*sf.duration = time.Until(caCert.Details.NotAfter) - time.Second*1
 	}
 
+	// 解析
 	ip, ipNet, err := net.ParseCIDR(*sf.ip)
 	if err != nil {
 		return newHelpErrorf("invalid ip definition: %s", err)
@@ -122,6 +162,7 @@ func signCert(args []string, out io.Writer, errOut io.Writer) error {
 		}
 	}
 
+	// 子网
 	subnets := []*net.IPNet{}
 	if *sf.subnets != "" {
 		for _, rs := range strings.Split(*sf.subnets, ",") {
@@ -190,7 +231,7 @@ func signCert(args []string, out io.Writer, errOut io.Writer) error {
 			return fmt.Errorf("refusing to overwrite existing key: %s", *sf.outKeyPath)
 		}
 
-		err = ioutil.WriteFile(*sf.outKeyPath, cert.MarshalX25519PrivateKey(rawPriv), 0600)
+		//err = ioutil.WriteFile(*sf.outKeyPath, cert.MarshalX25519PrivateKey(rawPriv), 0600)
 		if err != nil {
 			return fmt.Errorf("error while writing out-key: %s", err)
 		}
@@ -201,11 +242,22 @@ func signCert(args []string, out io.Writer, errOut io.Writer) error {
 		return fmt.Errorf("error while marshalling certificate: %s", err)
 	}
 
-	err = ioutil.WriteFile(*sf.outCertPath, b, 0600)
+	// err = ioutil.WriteFile(*sf.outCertPath, b, 0600)
+	docs := []interface{}{
+		bson.M{"name": sf.name, "type": "key", "ca": cert.MarshalX25519PrivateKey(rawPriv),"parent":sf.parent, "created": now, "updated": now, "deleted": now},
+		bson.M{"name": sf.name, "type": "cert", "ca": b,"parent":sf.parent, "created": now, "updated": now, "deleted": now},
+	}
 	if err != nil {
 		return fmt.Errorf("error while writing out-crt: %s", err)
 	}
+	insertManyOpts := options.InsertMany().SetOrdered(false)
+	insertManyResult, err := collection.InsertMany(todo, docs, insertManyOpts)
+	if err != nil {
+		return fmt.Errorf("error while install db: %s", err)
+	}
+	fmt.Println("ids:", insertManyResult.InsertedIDs)
 
+	// 输出二维码
 	if *sf.outQRPath != "" {
 		b, err = qrcode.Encode(string(b), qrcode.Medium, -5)
 		if err != nil {

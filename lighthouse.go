@@ -130,6 +130,7 @@ func (lh *LightHouse) Query(ip uint32, f EncWriter) *RemoteList {
 }
 
 // This is asynchronous so no reply should be expected
+// 异步执行
 func (lh *LightHouse) QueryServer(ip uint32, f EncWriter) {
 	if lh.amLighthouse {
 		return
@@ -140,7 +141,9 @@ func (lh *LightHouse) QueryServer(ip uint32, f EncWriter) {
 	}
 
 	// Send a query to the lighthouses and hope for the best next time
+	// 向灯塔发出查询
 	query, err := proto.Marshal(NewLhQueryByInt(ip))
+	logrus.Warn("============query:",query)
 	if err != nil {
 		lh.l.WithError(err).WithField("vpnIp", IntIp(ip)).Error("Failed to marshal lighthouse query payload")
 		return
@@ -150,6 +153,8 @@ func (lh *LightHouse) QueryServer(ip uint32, f EncWriter) {
 	nb := make([]byte, 12, 12)
 	out := make([]byte, mtu)
 	for n := range lh.lighthouses {
+		// 向灯塔发送消息
+		logrus.Warn("===============向灯塔发送消息===============")
 		f.SendMessageToVpnIp(lightHouse, 0, n, query, nb, out)
 	}
 }
@@ -340,6 +345,7 @@ func (lh *LightHouse) LhUpdateWorker(f EncWriter) {
 }
 
 func (lh *LightHouse) SendUpdate(f EncWriter) {
+	logrus.Warn("发送更新状态")
 	var v4 []*Ip4AndPort
 	var v6 []*Ip6AndPort
 

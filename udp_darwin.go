@@ -18,6 +18,7 @@ func NewListenConfig(multi bool) net.ListenConfig {
 			if multi {
 				var controlErr error
 				err := c.Control(func(fd uintptr) {
+					// syscall.SOL_SOCKET 套节字
 					if err := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, unix.SO_REUSEPORT, 1); err != nil {
 						controlErr = fmt.Errorf("SO_REUSEPORT failed: %v", err)
 						return

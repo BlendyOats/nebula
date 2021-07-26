@@ -167,6 +167,7 @@ func (tw *SystemTimerWheel) advance(now time.Time) {
 	}
 
 	// We want to round down
+	// 四舍五入
 	ticks := int(now.Sub(*tw.lastTick) / tw.tickDuration)
 	//l.Infoln("Ticks: ", ticks)
 	for i := 0; i < ticks; i++ {

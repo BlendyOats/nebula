@@ -20,7 +20,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 	}
 
 	// Print the config if in test, the exit comes later
-	//  如果在测试中，打印配置，稍后退出。
+	//  如果是-test，打印配置，稍后退出。
 	if configTest {
 		b, err := yaml.Marshal(config.Settings)
 		if err != nil {
@@ -164,11 +164,13 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 	}
 
 	// set up our UDP listener
+	// 设置我们的UDP监听器
 	udpConns := make([]*udpConn, routines)
 	port := config.GetInt("listen.port", 0)
 
 	if !configTest {
 		for i := 0; i < routines; i++ {
+			// 监听
 			udpServer, err := NewListener(l, config.GetString("listen.host", "0.0.0.0"), port, routines > 1)
 			if err != nil {
 				return nil, NewContextualError("Failed to open udp listener", m{"queue": i}, err)
@@ -177,6 +179,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 			udpConns[i] = udpServer
 
 			// If port is dynamic, discover it
+			// 动态端口
 			if port == 0 {
 				uPort, err := udpServer.LocalAddr()
 				if err != nil {
@@ -188,6 +191,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 	}
 
 	// Set up my internal host map
+	//  设置内部主机map
 	var preferredRanges []*net.IPNet
 	rawPreferredRanges := config.GetStringSlice("preferred_ranges", []string{})
 	// First, check if 'preferred_ranges' is set and fallback to 'local_range'
@@ -229,7 +233,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 
 	hostMap.addUnsafeRoutes(&unsafeRoutes)
 	hostMap.metricsEnabled = config.GetBool("stats.message_metrics", false)
-
+	//  hostMap.vpnCIDR 内部Ip
 	l.WithField("network", hostMap.vpnCIDR).WithField("preferredRanges", hostMap.preferredRanges).Info("Main HostMap created")
 
 	/*
@@ -241,6 +245,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 	punchy := NewPunchyFromConfig(config)
 	if punchy.Punch && !configTest {
 		l.Info("UDP hole punching enabled")
+		// 发送数据包
 		go hostMap.Punchy(udpConns[0])
 	}
 
@@ -341,6 +346,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 		messageMetrics: messageMetrics,
 	}
 
+	// 开始建立握手
 	handshakeManager := NewHandshakeManager(l, tunCidr, preferredRanges, hostMap, lightHouse, udpConns[0], handshakeConfig)
 	lightHouse.handshakeTrigger = handshakeManager.trigger
 
@@ -404,11 +410,12 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 		ifce.writers = udpConns
 
 		ifce.RegisterConfigChangeCallbacks(config)
-
+		// 协程
 		go handshakeManager.Run(ifce)
 		go lightHouse.LhUpdateWorker(ifce)
 	}
 
+	// 开始统计
 	statsStart, err := startStats(l, config, buildVersion, configTest)
 	if err != nil {
 		return nil, NewContextualError("Failed to start stats emitter", nil, err)

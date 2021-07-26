@@ -188,6 +188,7 @@ func MarshalEd25519PublicKey(key ed25519.PublicKey) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: Ed25519PublicKeyBanner, Bytes: key})
 }
 
+// 将尝试对X25519公钥进行pem解码
 // UnmarshalX25519PublicKey will try to pem decode an X25519 public key, returning any other bytes b
 // or an error on failure
 func UnmarshalX25519PublicKey(b []byte) ([]byte, []byte, error) {
@@ -205,6 +206,7 @@ func UnmarshalX25519PublicKey(b []byte) ([]byte, []byte, error) {
 	return k.Bytes, r, nil
 }
 
+// 将尝试对Ed25519公钥进行pem解码
 // UnmarshalEd25519PublicKey will try to pem decode an Ed25519 public key, returning any other bytes b
 // or an error on failure
 func UnmarshalEd25519PublicKey(b []byte) (ed25519.PublicKey, []byte, error) {
