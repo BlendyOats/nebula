@@ -91,6 +91,8 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// All non system modifying configuration consumption should live above this line
 	// tun config, listeners, anything modifying the computer should be below
+	// 所有非系统修改的配置消耗都应该在这一行上面。
+	// tun配置，监听器，任何修改计算机的东西都应该在下面。
 	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	var routines int
@@ -230,6 +232,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 		}
 	}
 
+	// 主机信息
 	hostMap := NewHostMap(l, "main", tunCidr, preferredRanges)
 
 	hostMap.addUnsafeRoutes(&unsafeRoutes)
@@ -247,6 +250,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 	if punchy.Punch && !configTest {
 		l.Info("UDP hole punching enabled")
 		// 发送数据包
+		l.Warn("udpCoonns:",udpConns[0])
 		go hostMap.Punchy(udpConns[0])
 	}
 
@@ -302,6 +306,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 	}
 	lightHouse.SetLocalAllowList(localAllowList)
 
+	l.Warn("lighthouseINfo",lightHouse)
 	//TODO: Move all of this inside functions in lighthouse.go
 	for k, v := range config.GetMap("static_host_map", map[interface{}]interface{}{}) {
 		vpnIp := net.ParseIP(fmt.Sprintf("%v", k))
@@ -315,6 +320,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 				if err != nil {
 					return nil, NewContextualError("Static host address could not be parsed", m{"vpnIp": vpnIp}, err)
 				}
+				// 添加静态远程主机
 				lightHouse.AddStaticRemote(ip2int(vpnIp), NewUDPAddr(ip, port))
 			}
 		} else {
@@ -349,6 +355,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 
 	// 开始建立握手
 	handshakeManager := NewHandshakeManager(l, tunCidr, preferredRanges, hostMap, lightHouse, udpConns[0], handshakeConfig)
+	l.Warn("建立握手包：",handshakeManager)
 	lightHouse.handshakeTrigger = handshakeManager.trigger
 
 	//TODO: These will be reused for psk 这些将被重新用于psk
@@ -389,6 +396,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 		ConntrackCacheTimeout: conntrackCacheTimeout,
 		l:                     l,
 	}
+	l.Warn("ifconfig:",ifConfig)
 
 	switch ifConfig.Cipher {
 	case "aes":
@@ -402,6 +410,7 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 	var ifce *Interface
 	if !configTest {
 		ifce, err = NewInterface(ifConfig)
+		l.Warn("ifce",ifce)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize interface: %s", err)
 		}

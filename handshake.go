@@ -5,6 +5,7 @@ const (
 	handshakeXXPSK0 = 1
 )
 
+// 处理到来的握手信息
 func HandleIncomingHandshake(f *Interface, addr *udpAddr, packet []byte, h *Header, hostinfo *HostInfo) {
 	if !f.lightHouse.remoteAllowList.Allow(addr.IP) {
 		f.l.WithField("udpAddr", addr).Debug("lighthouse.remote_allow_list denied incoming handshake")

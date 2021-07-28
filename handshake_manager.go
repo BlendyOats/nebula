@@ -159,9 +159,11 @@ func (c *HandshakeManager) handleOutbound(vpnIP uint32, f EncWriter, lighthouseT
 	}
 
 	// Send a the handshake to all known ips, stage 2 takes care of assigning the hostinfo.remote based on the first to reply
+	// 向所有已知的ips发送握手信号，第二阶段负责根据第一个回复的hostinfo.remote来分配。
 	var sentTo []*udpAddr
 	hostinfo.remotes.ForEach(c.pendingHostMap.preferredRanges, func(addr *udpAddr, _ bool) {
 		c.messageMetrics.Tx(handshake, NebulaMessageSubType(hostinfo.HandshakePacket[0][1]), 1)
+		// 发送握手包
 		err = c.outside.WriteTo(hostinfo.HandshakePacket[0], addr)
 		if err != nil {
 			hostinfo.logger(c.l).WithField("udpAddr", addr).
@@ -181,7 +183,7 @@ func (c *HandshakeManager) handleOutbound(vpnIP uint32, f EncWriter, lighthouseT
 		hostinfo.logger(c.l).WithField("udpAddrs", sentTo).
 			WithField("initiatorIndex", hostinfo.localIndexId).
 			WithField("handshake", m{"stage": 1, "style": "ix_psk0"}).
-			Info("Handshake message sent")
+			Info("发送握手包")
 	}
 
 	// Increment the counter to increase our delay, linear backoff
@@ -291,6 +293,7 @@ func (c *HandshakeManager) CheckAndComplete(hostinfo *HostInfo, handshakePacket 
 		delete(c.mainHostMap.RemoteIndexes, existingHostInfo.remoteIndexId)
 	}
 
+	logrus.Warn("来到了这边")
 	c.mainHostMap.addHostInfo(hostinfo, f)
 	return existingHostInfo, nil
 }

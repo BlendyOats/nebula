@@ -113,7 +113,7 @@ func (r *R) RouteUntilTxTun(sender *nebula.Control, receiver *nebula.Control) []
 }
 
 // RouteExitFunc will call the whatDo func with each udp packet from sender.
-// whatDo can return:
+// whatDo can return :
 //   - exitNow: the packet will not be routed and this call will return immediately
 //   - routeAndExit: this call will return immediately after routing the last packet from sender
 //   - keepRouting: the packet will be routed and whatDo will be called again on the next packet from sender

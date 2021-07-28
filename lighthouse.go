@@ -1,9 +1,14 @@
 package nebula
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/slackhq/nebula/config"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"net"
 	"sync"
 	"time"
@@ -200,6 +205,8 @@ func (lh *LightHouse) queryAndPrepMessage(vpnIp uint32, f func(*cache) (int, err
 }
 
 func (lh *LightHouse) DeleteVpnIP(vpnIP uint32) {
+	connect, _ := mongo.Connect(context.TODO(), config.ClientOpts)
+	collectionInfo := connect.Database("nebula_db").Collection("nebula_info")
 	// First we check the static mapping
 	// and do nothing if it is there
 	if _, ok := lh.staticList[vpnIP]; ok {
@@ -212,13 +219,20 @@ func (lh *LightHouse) DeleteVpnIP(vpnIP uint32) {
 	if lh.l.Level >= logrus.DebugLevel {
 		lh.l.Debugf("deleting %s from lighthouse.", IntIp(vpnIP))
 	}
-
+	findOneAndUpdateOpts := options.FindOneAndUpdate().SetUpsert(true)
+	update := bson.M{"$set": bson.M{"status":"unLine", "updated": time.Now()}}
+	var toUpdateDoc bson.M
+	collectionInfo.FindOneAndUpdate(context.TODO(), bson.M{"ips": IntIp(vpnIP)}, update, findOneAndUpdateOpts)
+	logrus.Warn("document before updating: %v \n", toUpdateDoc)
 	lh.Unlock()
 }
 
 // AddStaticRemote adds a static host entry for vpnIp as ourselves as the owner
 // We are the owner because we don't want a lighthouse server to advertise for static hosts it was configured with
 // And we don't want a lighthouse query reply to interfere with our learned cache if we are a client
+// AddStaticRemote为vpnIp添加了一个静态主机条目，并将我们自己作为所有者。
+// 我们是所有者，因为我们不希望Lighthouse服务器为它所配置的静态主机做广告。
+// 如果我们是客户端，我们不希望Lighthouse的查询回复干扰我们的学习缓存。
 func (lh *LightHouse) AddStaticRemote(vpnIp uint32, toAddr *udpAddr) {
 	lh.Lock()
 	am := lh.unlockedGetRemoteList(vpnIp)

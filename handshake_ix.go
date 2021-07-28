@@ -135,7 +135,7 @@ func ixHandshakeStage1(f *Interface, addr *udpAddr, packet []byte, h *Header) {
 		WithField("fingerprint", fingerprint).
 		WithField("initiatorIndex", hs.Details.InitiatorIndex).WithField("responderIndex", hs.Details.ResponderIndex).
 		WithField("remoteIndex", h.RemoteIndex).WithField("handshake", m{"stage": 1, "style": "ix_psk0"}).
-		Info("Handshake message received")
+		Info("收到握手消息")
 
 	hs.Details.ResponderIndex = myIndex
 	hs.Details.Cert = ci.certState.rawCertificateNoKey
@@ -393,7 +393,7 @@ func ixHandshakeStage2(f *Interface, addr *udpAddr, hostinfo *HostInfo, packet [
 		WithField("remoteIndex", h.RemoteIndex).WithField("handshake", m{"stage": 2, "style": "ix_psk0"}).
 		WithField("durationNs", duration).
 		WithField("sentCachedPackets", len(hostinfo.packetStore)).
-		Info("Handshake message received")
+		Info("回信来到了这边")
 
 	hostinfo.remoteIndexId = hs.Details.ResponderIndex
 	hostinfo.lastHandshakeTime = hs.Details.Time

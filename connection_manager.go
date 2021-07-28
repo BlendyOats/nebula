@@ -1,6 +1,12 @@
 package nebula
 
 import (
+	"context"
+	"fmt"
+	"github.com/slackhq/nebula/config"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 	"sync"
 	"time"
 
@@ -154,6 +160,10 @@ func (n *connectionManager) Run() {
 }
 
 func (n *connectionManager) HandleMonitorTick(now time.Time, p, nb, out []byte) {
+	// 引入DB
+	connect, _ := mongo.Connect(context.TODO(), config.ClientOpts)
+	collectionInfo := connect.Database("nebula_db").Collection("nebula_info")
+
 	n.TrafficTimer.advance(now)
 	for {
 		ep := n.TrafficTimer.Purge()
@@ -175,6 +185,11 @@ func (n *connectionManager) HandleMonitorTick(now time.Time, p, nb, out []byte) 
 					Debug("Tunnel status")
 
 			}
+			findOneAndUpdateOpts := options.FindOneAndUpdate().SetUpsert(true)
+			update := bson.M{"$set": bson.M{"status":"online", "updated": time.Now()}}
+			var toUpdateDoc bson.M
+			collectionInfo.FindOneAndUpdate(context.TODO(), bson.M{"ips": IntIp(vpnIP)}, update, findOneAndUpdateOpts)
+			fmt.Printf("document before updating: %v \n", toUpdateDoc)
 			n.ClearIP(vpnIP)
 			n.ClearPendingDeletion(vpnIP)
 			continue

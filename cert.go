@@ -23,7 +23,6 @@ type CertState struct {
 	privateKey          []byte
 }
 
-
 type caModel struct {
 	Name    *string   `json:"name"`
 	Type    *string   `json:"type"`
@@ -60,76 +59,75 @@ func NewCertState(certificate *cert.NebulaCertificate, privateKey []byte) (*Cert
 }
 
 func NewCertStateFromConfig(c *Config) (*CertState, error) {
-
 	var result caModel
-
-	var pemPrivateKey []byte
 	var err error
-
-	// TODO : 先从DB中查询
+	var pemPrivateKey []byte
+	// 获取hostName
+	hostName := c.GetString("hostInfo.name", "")
 	// 引入数据库
 	connect, _ := mongo.Connect(context.TODO(), config.ClientOpts)
 	collection := connect.Database("nebula_db").Collection("nebula_ca")
-	rawCAKey := collection.FindOne(context.TODO(), bson.M{"name": "host", "type": "key"})
-	if err = rawCAKey.Decode(&result); err == nil {
-		fmt.Printf("result: %+v\n", result)
-	}
-	// 获取ca
-	// prawCa := *result.Ca
-
-
-	privPathOrPEM := c.GetString("pki.key", "")
-	if privPathOrPEM == "" {
-		// Support backwards compat with the old x509
-		//TODO: remove after this is rolled out everywhere - NB 2018/02/23
-		privPathOrPEM = c.GetString("x509.key", "")
-	}
-
-	if privPathOrPEM == "" {
-		return nil, errors.New("no pki.key path or PEM data provided")
-	}
-
-	if strings.Contains(privPathOrPEM, "-----BEGIN") {
-		pemPrivateKey = []byte(privPathOrPEM)
-		privPathOrPEM = "<inline>"
+	rawCAKey := collection.FindOne(context.TODO(), bson.M{"name": hostName, "type": "key"})
+	if rawCAKey.Decode(&result); err != nil {
+		pemPrivateKey = []byte(*result.Ca)
 	} else {
-		pemPrivateKey, err = ioutil.ReadFile(privPathOrPEM)
-		if err != nil {
-			return nil, fmt.Errorf("unable to read pki.key file %s: %s", privPathOrPEM, err)
+		privPathOrPEM := c.GetString("pki.key", "")
+		if privPathOrPEM == "" {
+			// Support backwards compat with the old x509
+			//TODO: remove after this is rolled out everywhere - NB 2018/02/23
+			privPathOrPEM = c.GetString("x509.key", "")
+		}
+
+		if privPathOrPEM == "" {
+			return nil, errors.New("no pki.key path or PEM data provided")
+		}
+
+		if strings.Contains(privPathOrPEM, "-----BEGIN") {
+			pemPrivateKey = []byte(privPathOrPEM)
+			privPathOrPEM = "<inline>"
+		} else {
+			pemPrivateKey, err = ioutil.ReadFile(privPathOrPEM)
+			if err != nil {
+				return nil, fmt.Errorf("unable to read pki.key file %s: %s", privPathOrPEM, err)
+			}
 		}
 	}
 
 	rawKey, _, err := cert.UnmarshalX25519PrivateKey(pemPrivateKey)
 	if err != nil {
-		return nil, fmt.Errorf("error while unmarshaling pki.key %s: %s", privPathOrPEM, err)
+		return nil, fmt.Errorf("error while unmarshaling pki.key %s: %s", pemPrivateKey, err)
 	}
 
 	var rawCert []byte
-
-	pubPathOrPEM := c.GetString("pki.cert", "")
-	if pubPathOrPEM == "" {
-		// Support backwards compat with the old x509
-		//TODO: remove after this is rolled out everywhere - NB 2018/02/23
-		pubPathOrPEM = c.GetString("x509.cert", "")
-	}
-
-	if pubPathOrPEM == "" {
-		return nil, errors.New("no pki.cert path or PEM data provided")
-	}
-
-	if strings.Contains(pubPathOrPEM, "-----BEGIN") {
-		rawCert = []byte(pubPathOrPEM)
-		pubPathOrPEM = "<inline>"
+	rawCACert := collection.FindOne(context.TODO(), bson.M{"name": hostName, "type": "cert"})
+	if rawCACert.Decode(&result); err != nil {
+		//获取ca
+		rawCert = []byte(*result.Ca)
 	} else {
-		rawCert, err = ioutil.ReadFile(pubPathOrPEM)
-		if err != nil {
-			return nil, fmt.Errorf("unable to read pki.cert file %s: %s", pubPathOrPEM, err)
+		pubPathOrPEM := c.GetString("pki.cert", "")
+		if pubPathOrPEM == "" {
+			// Support backwards compat with the old x509
+			//TODO: remove after this is rolled out everywhere - NB 2018/02/23
+			pubPathOrPEM = c.GetString("x509.cert", "")
+		}
+
+		if pubPathOrPEM == "" {
+			return nil, errors.New("no pki.cert path or PEM data provided")
+		}
+
+		if strings.Contains(pubPathOrPEM, "-----BEGIN") {
+			rawCert = []byte(pubPathOrPEM)
+			pubPathOrPEM = "<inline>"
+		} else {
+			rawCert, err = ioutil.ReadFile(pubPathOrPEM)
+			if err != nil {
+				return nil, fmt.Errorf("unable to read pki.cert file %s: %s", pubPathOrPEM, err)
+			}
 		}
 	}
-
 	nebulaCert, _, err := cert.UnmarshalNebulaCertificateFromPEM(rawCert)
 	if err != nil {
-		return nil, fmt.Errorf("error while unmarshaling pki.cert %s: %s", pubPathOrPEM, err)
+		return nil, fmt.Errorf("error while unmarshaling pki.cert %s: %s", rawCert, err)
 	}
 
 	if nebulaCert.Expired(time.Now()) {
@@ -150,15 +148,17 @@ func NewCertStateFromConfig(c *Config) (*CertState, error) {
 func loadCAFromConfig(l *logrus.Logger, c *Config) (*cert.NebulaCAPool, error) {
 	var result caModel
 	var err error
+	var rawCA []byte
+	hostGroup := c.GetString("hostInfo.group", "")
+	logrus.Warn("这是一个测试hostname：",hostGroup)
 	connect, _ := mongo.Connect(context.TODO(), config.ClientOpts)
 	collection := connect.Database("nebula_db").Collection("nebula_ca")
-	rawCAKey := collection.FindOne(context.TODO(), bson.M{"name": "seeed", "type": "cert"})
-	rawCAKey.Decode(&result)
-	priCa := *result.Ca
-	var rawCA []byte
-	if priCa!= ""{
-		rawCA= []byte(priCa)
-	}else {
+	rawCAKey := collection.FindOne(context.TODO(), bson.M{"name": hostGroup, "type": "cert"})
+
+	if rawCAKey.Decode(&result); err != nil{
+		rawCAKey.Decode(&result)
+		rawCA = []byte(*result.Ca)
+	} else {
 		caPathOrPEM := c.GetString("pki.ca", "")
 		if caPathOrPEM == "" {
 			// Support backwards compat with the old x509
@@ -179,7 +179,6 @@ func loadCAFromConfig(l *logrus.Logger, c *Config) (*cert.NebulaCAPool, error) {
 			}
 		}
 	}
-
 
 	CAs, err := cert.NewCAPoolFromBytes(rawCA)
 	if err != nil {

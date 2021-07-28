@@ -60,6 +60,7 @@ func ca(args []string, out io.Writer, errOut io.Writer) error {
 		return err
 	}
 	collection := connect.Database("nebula_db").Collection("nebula_ca")
+	collectionInfo := connect.Database("nebula_db").Collection("nebula_info")
 
 	if err := mustFlagString("name", cf.name); err != nil {
 		return err
@@ -158,22 +159,23 @@ func ca(args []string, out io.Writer, errOut io.Writer) error {
 	}
 
 	// 插入公钥
-	err = ioutil.WriteFile(*cf.outCertPath, b, 0600)
+	//err = ioutil.WriteFile(*cf.outCertPath, b, 0600)
 	//if err != nil {
 	//	return fmt.Errorf("error while writing out-crt: %s", err)
 	//}
 
 	docs := []interface{}{
-		bson.M{"name": cf.name, "type": "key", "ca": cert.MarshalEd25519PrivateKey(rawPriv), "created": now, "updated": now, "deleted": now},
+		bson.M{"name": cf.name, "type": "key", "ca": cert.MarshalEd25519PrivateKey(rawPriv),"created": now, "updated": now, "deleted": now},
 		bson.M{"name": cf.name, "type": "cert", "ca": b, "created": now, "updated": now, "deleted": now},
 	}
+	// 插入证书相关
 	insertManyOpts := options.InsertMany().SetOrdered(false)
 	insertManyResult, err := collection.InsertMany(todo, docs, insertManyOpts)
 	if err != nil {
 		return fmt.Errorf("error while install db: %s", err)
 	}
 	fmt.Println("ids:", insertManyResult.InsertedIDs)
-
+	collectionInfo.InsertOne(todo,bson.M{"name":cf.name,"ips":ips,"created": now,"status":"unLine", "updated": now, "deleted": now})
 	// 输出二维码
 	if *cf.outQRPath != "" {
 		b, err = qrcode.Encode(string(b), qrcode.Medium, -5)

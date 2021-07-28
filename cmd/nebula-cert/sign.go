@@ -81,6 +81,7 @@ func signCert(args []string, out io.Writer, errOut io.Writer) error {
 		return err
 	}
 	collection := connect.Database("nebula_db").Collection("nebula_ca")
+	collectionInfo := connect.Database("nebula_db").Collection("nebula_info")
 	if err := mustFlagString("ca-key", sf.caKeyPath); err != nil {
 		return err
 	}
@@ -244,8 +245,8 @@ func signCert(args []string, out io.Writer, errOut io.Writer) error {
 
 	// err = ioutil.WriteFile(*sf.outCertPath, b, 0600)
 	docs := []interface{}{
-		bson.M{"name": sf.name, "type": "key", "ca": cert.MarshalX25519PrivateKey(rawPriv),"parent":sf.parent, "created": now, "updated": now, "deleted": now},
-		bson.M{"name": sf.name, "type": "cert", "ca": b,"parent":sf.parent, "created": now, "updated": now, "deleted": now},
+		bson.M{"name": sf.name, "type": "key", "ca": cert.MarshalX25519PrivateKey(rawPriv), "lightHouse": sf.parent, "created": now, "updated": now, "deleted": now},
+		bson.M{"name": sf.name, "type": "cert", "ca": b, "lightHouse": sf.parent, "created": now, "updated": now, "deleted": now},
 	}
 	if err != nil {
 		return fmt.Errorf("error while writing out-crt: %s", err)
@@ -256,7 +257,8 @@ func signCert(args []string, out io.Writer, errOut io.Writer) error {
 		return fmt.Errorf("error while install db: %s", err)
 	}
 	fmt.Println("ids:", insertManyResult.InsertedIDs)
-
+	// 插入详情信息
+	collectionInfo.InsertOne(todo, bson.M{"name": sf.name, "ips": ipNet.IP,"lightHouse": sf.parent, "status": "unLine", "created": now, "updated": now, "deleted": now})
 	// 输出二维码
 	if *sf.outQRPath != "" {
 		b, err = qrcode.Encode(string(b), qrcode.Medium, -5)
