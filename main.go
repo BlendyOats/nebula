@@ -26,7 +26,6 @@ func Main(config *Config, configTest bool, buildVersion string, logger *logrus.L
 		if err != nil {
 			return nil, err
 		}
-
 		// Print the final config
 		l.Println(string(b))
 	}

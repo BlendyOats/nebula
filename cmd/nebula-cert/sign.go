@@ -5,22 +5,90 @@ import (
 	"crypto/rand"
 	"flag"
 	"fmt"
+	"github.com/skip2/go-qrcode"
+	"github.com/slackhq/nebula/cert"
 	"github.com/slackhq/nebula/config"
+	yaml2 "github.com/slackhq/nebula/yaml"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"golang.org/x/crypto/curve25519"
 	"io"
 	"io/ioutil"
 	"net"
 	"os"
 	"strings"
 	"time"
-
-	"github.com/skip2/go-qrcode"
-	"github.com/slackhq/nebula/cert"
-	"golang.org/x/crypto/curve25519"
 )
 
+func checkError(err error) {
+	if err != nil {
+		panic(err)
+	}
+}
+
+type Pki struct {
+	Ca   string `yaml:"ca"`
+	Cert string `yaml:"cert"`
+	Key  string `yaml:"key"`
+}
+
+type Lighthouse struct {
+	AmLighthouse string   `yaml:"am_lighthouse"`
+	Interval     int      `yaml:"interval"`
+	Hosts        []string `yaml:"hosts"`
+}
+type Listen struct {
+	Host string `yaml:"host"`
+	Port int    `yaml:"port"`
+}
+type Punchy struct {
+	Punch bool `yaml:"punch"`
+}
+type Tun struct {
+	Disabled           bool   `yaml:"disabled"`
+	Dev                string `yaml:"dev"`
+	DropLocalBroadcast bool   `yaml:"drop_local_broadcast"`
+	DropMulticast      bool   `yaml:"drop_multicast"`
+	TxQueue            int    `yaml:"tx_queue"`
+	Mtu                int    `yaml:"mtu"`
+}
+type Logging struct {
+	Level  string `yaml:"level"`
+	Format string `yaml:"format"`
+}
+
+type Firewall struct {
+	Conntrack Conntrack `yaml:"conntrack"`
+	Outbound  []Bound   `yaml:"outbound"`
+	Inbound   []Bound   `yaml:"inbound"`
+}
+
+type Conntrack struct {
+	TcpTimeout     string `yaml:"tcp_timeout"`
+	UdpTimeout     string `yaml:"udp_timeout"`
+	DefaultTimeout string `yaml:"default_timeout"`
+	MaxConnections int    `yaml:"max_connections"`
+}
+
+type Bound struct {
+	Port  string `yaml:"port"`
+	Proto string `yaml:"proto"`
+	Host  string `yaml:"host"`
+}
+
+type Nebula struct {
+	Group         string              `yaml:"group"`
+	Name          string              `yaml:"name"`
+	Pki           Pki                 `yaml:"pki"`
+	StaticHostMap map[string][]string `yaml:"static_host_map"`
+	Lighthouse    Lighthouse          `yaml:"lighthouse"`
+	Listen        Listen              `yaml:"listen"`
+	Punchy        Punchy              `yaml:"punchy"`
+	Tun           Tun                 `yaml:"tun"`
+	Logging       Logging             `yaml:"logging"`
+	Firewall      Firewall            `yaml:"firewall"`
+}
 type signFlags struct {
 	set         *flag.FlagSet
 	caKeyPath   *string
@@ -35,6 +103,7 @@ type signFlags struct {
 	groups      *string
 	subnets     *string
 	parent      *string
+	light       *string
 }
 
 type caModel struct {
@@ -53,6 +122,7 @@ func newSignFlags() *signFlags {
 	sf.caCertPath = sf.set.String("ca-crt", "ca.crt", "Optional: path to the signing CA cert")
 	sf.name = sf.set.String("name", "", "Required: name of the cert, usually a hostname")
 	sf.parent = sf.set.String("parent", "", "获取root ca")
+	sf.light = sf.set.String("light", "", "是否是lighthouse")
 	sf.ip = sf.set.String("ip", "", "Required: ip and network in CIDR notation to assign the cert")
 	sf.duration = sf.set.Duration("duration", 0, "Optional: how long the cert should be valid for. The default is 1 second before the signing cert expires. Valid time units are seconds: \"s\", minutes: \"m\", hours: \"h\"")
 	sf.inPubPath = sf.set.String("in-pub", "", "Optional (if out-key not set): path to read a previously generated public key")
@@ -93,9 +163,6 @@ func signCert(args []string, out io.Writer, errOut io.Writer) error {
 	}
 	if err := mustFlagString("ip", sf.ip); err != nil {
 		return err
-	}
-	if err := mustFlagString("parent", sf.parent); err != nil {
-		return fmt.Errorf("这是一个错误: %s", err)
 	}
 	if *sf.inPubPath != "" && *sf.outKeyPath != "" {
 		return newHelpErrorf("cannot set both -in-pub and -out-key")
@@ -258,7 +325,7 @@ func signCert(args []string, out io.Writer, errOut io.Writer) error {
 	}
 	fmt.Println("ids:", insertManyResult.InsertedIDs)
 	// 插入详情信息
-	collectionInfo.InsertOne(todo, bson.M{"name": sf.name, "ips": ipNet.IP,"lightHouse": sf.parent, "status": "unLine", "created": now, "updated": now, "deleted": now})
+	collectionInfo.InsertOne(todo, bson.M{"name": sf.name, "ips": ip, "lightHouse": sf.parent, "status": "unLine", "created": now, "updated": now, "deleted": now})
 	// 输出二维码
 	if *sf.outQRPath != "" {
 		b, err = qrcode.Encode(string(b), qrcode.Medium, -5)
@@ -266,11 +333,58 @@ func signCert(args []string, out io.Writer, errOut io.Writer) error {
 			return fmt.Errorf("error while generating qr code: %s", err)
 		}
 
-		err = ioutil.WriteFile(*sf.outQRPath, b, 0600)
+		//err = ioutil.WriteFile(*sf.outQRPath, b, 0600)
 		if err != nil {
 			return fmt.Errorf("error while writing out-qr: %s", err)
 		}
 	}
+	s := ip.String()
+	strings.Split(s, "")
+	m := make(map[string][]string)
+	m["192.168.100.1"] = []string{"8.212.29.4:4242"}
+	// 生成配置
+	yaml2.WriteToYaml(yaml2.Nebula{
+		Group: *sf.parent,
+		Name:  *sf.name,
+		Pki: yaml2.Pki{
+			Ca:   "./ca.crt",
+			Cert: "./" + *sf.name + ".crt",
+			Key:  "./" + *sf.name + ".key",
+		},
+		StaticHostMap: m,
+		Lighthouse: yaml2.Lighthouse{
+			AmLighthouse: *sf.light,
+			Interval:     60,
+			Hosts:        []string{"192.168.100.1"},
+		},
+		Listen: yaml2.Listen{
+			Host: "0.0.0.0",
+			Port: 0,
+		},
+		Punchy: yaml2.Punchy{Punch: true},
+		Tun: yaml2.Tun{
+			Disabled:           false,
+			Dev:                *sf.parent,
+			DropLocalBroadcast: false,
+			DropMulticast:      false,
+			TxQueue:            500,
+			Mtu:                1300,
+		},
+		Logging: yaml2.Logging{
+			Level:  "debug",
+			Format: "text",
+		},
+		Firewall: yaml2.Firewall{
+			Conntrack: yaml2.Conntrack{
+				TcpTimeout:     "12m",
+				UdpTimeout:     "3m",
+				DefaultTimeout: "10m",
+				MaxConnections: 100000,
+			},
+			Outbound: []yaml2.Bound{{"any", "any", "any"}},
+			Inbound:  []yaml2.Bound{{"any", "any", "any"}},
+		},
+	})
 
 	return nil
 }

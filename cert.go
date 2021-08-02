@@ -24,12 +24,13 @@ type CertState struct {
 }
 
 type caModel struct {
-	Name    *string   `json:"name"`
-	Type    *string   `json:"type"`
-	Ca      *string   `json:"ca"`
-	Created time.Time `json:"created"`
-	Updated time.Time `json:"updated"`
-	Deleted time.Time `json:"deleted"`
+	Name       *string   `json:"name"`
+	Type       *string   `json:"type"`
+	Ca         *string   `json:"ca"`
+	LightHouse *string   `json:"lightHouse"`
+	Created    time.Time `json:"created"`
+	Updated    time.Time `json:"updated"`
+	Deleted    time.Time `json:"deleted"`
 }
 
 func NewCertState(certificate *cert.NebulaCertificate, privateKey []byte) (*CertState, error) {
@@ -62,14 +63,21 @@ func NewCertStateFromConfig(c *Config) (*CertState, error) {
 	var result caModel
 	var err error
 	var pemPrivateKey []byte
+	var rawCert []byte
 	// 获取hostName
-	hostName := c.GetString("hostInfo.name", "")
+	hostName := c.GetString("name", "")
 	// 引入数据库
-	connect, _ := mongo.Connect(context.TODO(), config.ClientOpts)
-	collection := connect.Database("nebula_db").Collection("nebula_ca")
-	rawCAKey := collection.FindOne(context.TODO(), bson.M{"name": hostName, "type": "key"})
-	if rawCAKey.Decode(&result); err != nil {
-		pemPrivateKey = []byte(*result.Ca)
+	connect, err := mongo.Connect(context.TODO(), config.ClientOpts)
+	if err == nil {
+		collection := connect.Database("nebula_db").Collection("nebula_ca")
+		rawCAKey := collection.FindOne(context.TODO(), bson.M{"name": hostName, "type": "key"})
+		if rawCAKey.Decode(&result); err == nil {
+			pemPrivateKey = []byte(*result.Ca)
+		}
+		rawCACert := collection.FindOne(context.TODO(), bson.M{"name": hostName, "type": "cert"})
+		if rawCACert.Decode(&result); err == nil {
+			rawCert = []byte(*result.Ca)
+		}
 	} else {
 		privPathOrPEM := c.GetString("pki.key", "")
 		if privPathOrPEM == "" {
@@ -91,19 +99,7 @@ func NewCertStateFromConfig(c *Config) (*CertState, error) {
 				return nil, fmt.Errorf("unable to read pki.key file %s: %s", privPathOrPEM, err)
 			}
 		}
-	}
 
-	rawKey, _, err := cert.UnmarshalX25519PrivateKey(pemPrivateKey)
-	if err != nil {
-		return nil, fmt.Errorf("error while unmarshaling pki.key %s: %s", pemPrivateKey, err)
-	}
-
-	var rawCert []byte
-	rawCACert := collection.FindOne(context.TODO(), bson.M{"name": hostName, "type": "cert"})
-	if rawCACert.Decode(&result); err != nil {
-		//获取ca
-		rawCert = []byte(*result.Ca)
-	} else {
 		pubPathOrPEM := c.GetString("pki.cert", "")
 		if pubPathOrPEM == "" {
 			// Support backwards compat with the old x509
@@ -124,6 +120,10 @@ func NewCertStateFromConfig(c *Config) (*CertState, error) {
 				return nil, fmt.Errorf("unable to read pki.cert file %s: %s", pubPathOrPEM, err)
 			}
 		}
+	}
+	rawKey, _, err := cert.UnmarshalX25519PrivateKey(pemPrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("error while unmarshaling pki.key %s: %s", pemPrivateKey, err)
 	}
 	nebulaCert, _, err := cert.UnmarshalNebulaCertificateFromPEM(rawCert)
 	if err != nil {
@@ -149,13 +149,13 @@ func loadCAFromConfig(l *logrus.Logger, c *Config) (*cert.NebulaCAPool, error) {
 	var result caModel
 	var err error
 	var rawCA []byte
-	hostGroup := c.GetString("hostInfo.group", "")
-	logrus.Warn("这是一个测试hostname：",hostGroup)
+	hostGroup := c.GetString("group", "")
+	logrus.Warn("这是一个测试hostname：", hostGroup)
 	connect, _ := mongo.Connect(context.TODO(), config.ClientOpts)
 	collection := connect.Database("nebula_db").Collection("nebula_ca")
-	rawCAKey := collection.FindOne(context.TODO(), bson.M{"name": hostGroup, "type": "cert"})
+	rawCAKey := collection.FindOne(context.TODO(), bson.M{"name": hostGroup,"type": "cert"})
 
-	if rawCAKey.Decode(&result); err != nil{
+	if rawCAKey.Decode(&result); err == nil {
 		rawCAKey.Decode(&result)
 		rawCA = []byte(*result.Ca)
 	} else {

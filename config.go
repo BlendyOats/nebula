@@ -482,6 +482,11 @@ func (c *Config) parse() error {
 	return nil
 }
 
+func (c *Config) FindPath(path string)(string){
+	c.path = path
+	return path
+}
+
 func readDirNames(path string) ([]string, error) {
 	f, err := os.Open(path)
 	if err != nil {
